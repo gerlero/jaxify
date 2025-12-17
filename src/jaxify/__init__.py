@@ -28,7 +28,11 @@ def jitx(func: Callable[_Inputs, _Output], /) -> Callable[_Inputs, _Output]:  # 
                 )
                 nconds += 1
 
-            case ast.FunctionDef() if node.name == func.__name__:  # ty: ignore[unresolved-attribute]
+            case ast.For() | ast.While():
+                msg = "Loops are not currently supported with jitx."
+                raise NotImplementedError(msg)
+
+            case ast.FunctionDef(name=func.__name__):  # ty: ignore[unresolved-attribute]
                 node.decorator_list = []
 
     ast.fix_missing_locations(tree)
