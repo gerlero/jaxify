@@ -4,8 +4,7 @@ from jaxify import jitx
 
 
 def test_basic() -> None:
-    @jax.vmap
-    @jitx
+    @jitx(vmap=True)
     def absolute_value(x: jax.Array) -> jax.Array:
         if x >= 0:
             return x
@@ -17,8 +16,7 @@ def test_basic() -> None:
 
 
 def test_nested() -> None:
-    @jax.vmap
-    @jitx
+    @jitx(vmap=True)
     def nested_ifs(x: jax.Array) -> jax.Array:
         if x >= 0:
             if x >= 10:
