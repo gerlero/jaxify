@@ -38,7 +38,6 @@ class jitx(Generic[_Inputs, _Output]):  # noqa: N801
         self._traceable = compile(tree, filename="<ast>", mode="exec")
 
     @functools.partial(jax.jit, static_argnums=0)
-    @functools.partial(jax.vmap, in_axes=(None, 0), out_axes=0)
     def __call__(self, *args: _Inputs.args, **kwargs: _Inputs.kwargs) -> _Output:  # noqa: C901
         if not self._nconds:
             return self._func(*args, **kwargs)

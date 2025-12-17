@@ -4,6 +4,7 @@ from jaxify import jitx
 
 
 def test_basic() -> None:
+    @jax.vmap
     @jitx
     def absolute_value(x: jax.Array) -> jax.Array:
         if x >= 0:
@@ -16,8 +17,9 @@ def test_basic() -> None:
 
 
 def test_nested() -> None:
+    @jax.vmap
     @jitx
-    def nested_absolute_value(x: jax.Array) -> jax.Array:
+    def nested_ifs(x: jax.Array) -> jax.Array:
         if x >= 0:
             if x >= 10:
                 return x
@@ -27,7 +29,7 @@ def test_nested() -> None:
         return -x + 10
 
     xs = jnp.arange(-20, 20)
-    ys = nested_absolute_value(xs)
+    ys = nested_ifs(xs)
     expected_ys = jnp.where(
         xs >= 10,
         xs,

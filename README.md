@@ -30,9 +30,11 @@ pip install jaxify
 ## Getting started
 
 ```python
+import jax
 import jax.numpy as jnp
 from jaxify import jitx
 
+@jax.vmap
 @jitx
 def absolute_value(x):
     if x >= 0:  # <-- If conditional in a JIT-compiled function!
