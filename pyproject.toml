@@ -4,7 +4,7 @@ build-backend = "uv_build"
 
 [project]
 name = "jaxify"
-version = "0.0.2"
+version = "0.0.3"
 description = "Write Python. Run JAX"
 readme = "README.md"
 requires-python = ">=3.10"
