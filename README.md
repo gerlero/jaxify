@@ -19,7 +19,7 @@ Write **Python**. Run **JAX**.
 
 ---
 
-**jaxify** lets you JIT-compile functions (using [JAX](https://github.com/jax-ml/jax)) that [`@jax.jit`](https://docs.jax.dev/en/latest/_autosummary/jax.jit.html#jax.jit) cannot handle. With **jaxify**, you can compile functions with e.g. Python `if`/`elif`/`else` statements (with support for other control flow structures planned for the future) that might be affected by the values of inputs.
+**jaxify** lets you JIT-compile functions (using [JAX](https://github.com/jax-ml/jax)) that [`@jax.jit`](https://docs.jax.dev/en/latest/_autosummary/jax.jit.html#jax.jit) cannot handle. With it, you can compile functions with e.g. Python `if`/`elif`/`else` statements (with support for other [control flow constructs](#compatibility-status) planned for the future) that might be affected by the values of inputs.
 
 **jaxify**'s `@jitx` decorator works exclusively on the decorated function and intervenes only at tracing/compilation time; it does not have any effect at actual runtime besides the code it emits for JAX.
 
@@ -50,3 +50,16 @@ xs = jnp.arange(-1000, 1000)
 ys = absolute_value(xs)  # <-- Runs at JAX speed!
 print(ys)
 ```
+
+## Compatibility status
+
+The following Python control flow constructs are currently supported within `@jitx`-decorated functions:
+
+| Python construct        | 📌 Static values | ⚙️ Traced values |   Notes                                                         |
+|:-----------------------:|:----------------:|:----------------:|:----------------------------------------------------------------|
+| `if` / `elif` / `else`  | ✅               | ✅               | Should mostly work                                              |
+| `if`-`else` expressions | ✅               | ❌               | Planned next                                                    |
+| `and` / `or`            | ✅               | ❌               | Use [`&` or `jnp.logical_and`](https://docs.jax.dev/en/latest/_autosummary/jax.numpy.logical_and.html) / [`\|` or `jnp.logical_or`](https://docs.jax.dev/en/latest/_autosummary/jax.numpy.logical_or.html) instead |
+| `for` loops             | ⚠️               | N/A              | [Static loops are unrolled](https://docs.jax.dev/en/latest/control-flow.html#control-flow)                                       |
+| `while` loops           | ⚠️               | ❌               | [Static loops are unrolled](https://docs.jax.dev/en/latest/control-flow.html#control-flow)                                       |
+| `match`-`case`          | ✅               | ❌               | Use `if`-`elif`-`else` chain or [`jax.lax.switch`](https://docs.jax.dev/en/latest/_autosummary/jax.lax.switch.html) instead       |
