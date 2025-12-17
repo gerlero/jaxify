@@ -21,7 +21,7 @@ def jaxify(func: Callable[_Inputs, _Output], /) -> Callable[_Inputs, _Output]:  
     nconds = 0
     for node in ast.walk(tree):
         match node:
-            case ast.If():
+            case ast.If() | ast.IfExp():
                 node.test = ast.Call(
                     func=ast.Name(id="_jaxify_cond", ctx=ast.Load()),
                     args=[node.test, ast.Constant(value=nconds)],
