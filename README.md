@@ -38,8 +38,7 @@ import jax
 import jax.numpy as jnp
 from jaxify import jitx
 
-@jax.vmap
-@jitx
+@jitx(vmap=True)
 def absolute_value(x):
     if x >= 0:  # <-- If conditional in a JIT-compiled function!
         return x
