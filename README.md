@@ -57,8 +57,8 @@ The following Python control flow constructs are currently supported within `@ji
 | Python construct        | Support status   | Notes |
 |:-----------------------:|:----------------:|:- |
 | `if` / `elif` / `else`  | ✅               | Should mostly work |
-| `if`-`else` expressions | ❌               | Planned next |
-| `and` / `or`            | ❌               | Use [`&` or `jnp.logical_and`](https://docs.jax.dev/en/latest/_autosummary/jax.numpy.logical_and.html) / [`\|` or `jnp.logical_or`](https://docs.jax.dev/en/latest/_autosummary/jax.numpy.logical_or.html) instead |
+| `if`-`else` expressions | ⚠️               | Static values only |
+| `and` / `or`            | ⚠️               | Static values only. For dynamic values, use [`&` or `jnp.logical_and`](https://docs.jax.dev/en/latest/_autosummary/jax.numpy.logical_and.html) / [`\|` or `jnp.logical_or`](https://docs.jax.dev/en/latest/_autosummary/jax.numpy.logical_or.html) instead |
 | `for` loops             | ❌               | Use [`jax.lax.fori_loop`](https://docs.jax.dev/en/latest/_autosummary/jax.lax.fori_loop.html), [`jax.lax.scan`](https://docs.jax.dev/en/latest/_autosummary/jax.lax.scan.html), or [`jax.lax.while_loop`](https://docs.jax.dev/en/latest/_autosummary/jax.lax.while_loop.html) instead |
 | `while` loops           | ❌               | Use [`jax.lax.while_loop`](https://docs.jax.dev/en/latest/_autosummary/jax.lax.while_loop.html) instead |
-| `match`-`case`          | ❌               | Use `if`-`elif`-`else` chain or [`jax.lax.switch`](https://docs.jax.dev/en/latest/_autosummary/jax.lax.switch.html) instead |
+| `match`-`case`          | ⚠️               | Static values only. For dynamic values, use an `if`-`elif`-`else` chain or [`jax.lax.switch`](https://docs.jax.dev/en/latest/_autosummary/jax.lax.switch.html) instead |
