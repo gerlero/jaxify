@@ -88,11 +88,18 @@ def jitx(func: Callable[_Inputs, _Output], /) -> Callable[_Inputs, _Output]:  # 
                                 mask &= cond
                             case False:
                                 mask &= ~cond
-                ret = jax.lax.cond(
-                    mask,
-                    lambda _=outputs[i]: _,
-                    lambda _=ret: _,
-                )
+                if ret is None:
+                    ret = outputs[i]
+                else:
+                    ret = jax.lax.cond(
+                        mask,
+                        lambda _=outputs[i]: _,
+                        lambda _=ret: _,
+                    )
+
+        if ret is None:
+            msg = "All possible paths through the function failed or returned None."
+            raise RuntimeError(msg)
 
         return ret  # ty: ignore[invalid-return-type]
 
