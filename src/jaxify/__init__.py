@@ -51,7 +51,7 @@ class jitx(Generic[_Inputs, _Output]):  # noqa: N801
             values = [None] * self._nconds
 
             def _jaxify_cond(cond: object, cond_id: int) -> bool:
-                if isinstance(cond, jax.Array):
+                if isinstance(cond, jax.interpreters.partial_eval.DynamicJaxprTracer):
                     values[cond_id] = cond  # noqa: B023
                     return combination[cond_id]  # noqa: B023
                 return bool(cond)
