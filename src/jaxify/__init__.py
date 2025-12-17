@@ -57,7 +57,11 @@ class jitx(Generic[_Inputs, _Output]):  # noqa: N801
                 return bool(cond)
 
             local_vars: dict[str, object] = {}
-            exec(self._traceable, {"_jaxify_cond": _jaxify_cond}, local_vars)  # noqa: S102
+            exec(  # noqa: S102
+                self._traceable,
+                {**self._func.__globals__, "_jaxify_cond": _jaxify_cond},  # ty: ignore[possibly-missing-attribute]
+                local_vars,
+            )
             func = local_vars[next(iter(local_vars))]
 
             try:
