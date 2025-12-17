@@ -37,7 +37,7 @@ from jaxify import jaxify
 
 @jax.jit
 @jax.vmap
-@jaxify
+@jaxify  # <-- Just add a @jaxify decorator
 def absolute_value(x):
     if x >= 0:  # <-- If conditional in a JIT-compiled function!
         return x
