@@ -234,24 +234,17 @@ def jaxify(func: Callable[_Inputs, _Output], /) -> Callable[_Inputs, _Output]:  
                     if cond is not None:
                         match value:
                             case True:
-                                mask &= cond
+                                mask = jnp.logical_and(mask, cond)
                             case False:
-                                mask &= ~cond
+                                mask = jnp.logical_and(mask, jnp.logical_not(cond))
                 if ret is None:
                     ret = outputs[i]
                 else:
-                    try:
-                        ret = jax.lax.cond(
-                            mask,
-                            lambda _=outputs[i]: _,
-                            lambda _=ret: _,
-                        )
-                    except TypeError:
-                        ret = jax.lax.select(
-                            mask,
-                            outputs[i],  # ty: ignore[invalid-argument-type]
-                            ret,  # ty: ignore[invalid-argument-type]
-                        )
+                    ret = jax.lax.cond(
+                        mask,
+                        lambda _=outputs[i]: _,
+                        lambda _=ret: _,
+                    )
 
         if ret is None:
             warnings.warn(
