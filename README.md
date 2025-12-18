@@ -51,9 +51,7 @@ print(ys)
 
 ## How it works
 
-`@jaxify` is a decorator that transforms Python functions by rewriting their abstract syntax tree (AST) to replace unsupported control flow constructs with JAX-compatible alternatives. It currently supports `if`/`elif`/`else` statements depending on input values, allowing you to write more natural Python code while still benefiting from JAX's performance boost.
-
-When you decorate a function with `@jaxify`, it analyzes the function's source code, identifies control flow constructs, and rewrites them to use JAX's functional control flow primitives (like `jax.lax.cond`). The transformed function is then traceable by JAX, enabling you to apply JAX transformations like `@jax.jit` and `@jax.vmap` seamlessly.
+`@jaxify` is a decorator that transforms Python functions using a mixture of static analysis and dynamic tracing to replace unsupported control flow constructs with JAX-compatible alternatives. The transformed function is then traceable by JAX, enabling you to apply functional JAX transformations like `@jax.jit` and `@jax.vmap` seamlessly.
 
 ## Compatibility status
 
@@ -61,8 +59,10 @@ The following Python control flow constructs are currently supported within `@ja
 
 | Python construct        | Support status   | Notes |
 |:-----------------------:|:----------------:|:----- |
-| `if` / `elif` / `else`  | ✅               |       |
+| `if` / `elif` / `else`  | ✅               | -     |
+| `and` / `or`            | ✅               | With non-singleton arrays, use [`&` or `jnp.logical_and`](https://docs.jax.dev/en/latest/_autosummary/jax.numpy.logical_and.html) / [`\|` or `jnp.logical_or`](https://docs.jax.dev/en/latest/_autosummary/jax.numpy.logical_or.html) |
+| comparisons             | ✅               | E.g. `x < y`, `x != y`, `x < y <= z` |
 | `for` loops             | ❌               | Use [`jax.lax.fori_loop`](https://docs.jax.dev/en/latest/_autosummary/jax.lax.fori_loop.html), [`jax.lax.scan`](https://docs.jax.dev/en/latest/_autosummary/jax.lax.scan.html), or [`jax.lax.while_loop`](https://docs.jax.dev/en/latest/_autosummary/jax.lax.while_loop.html) instead |
 | `while` loops           | ❌               | Use [`jax.lax.while_loop`](https://docs.jax.dev/en/latest/_autosummary/jax.lax.while_loop.html) instead |
 | `match`-`case`          | ⚠️               | Static values only. For dynamic values, use an `if`-`elif`-`else` chain or [`jax.lax.switch`](https://docs.jax.dev/en/latest/_autosummary/jax.lax.switch.html) instead |
-| `and` / `or`            | ⚠️               | Static scalar values only. For dynamic values or arrays, use [`&` or `jnp.logical_and`](https://docs.jax.dev/en/latest/_autosummary/jax.numpy.logical_and.html) / [`\|` or `jnp.logical_or`](https://docs.jax.dev/en/latest/_autosummary/jax.numpy.logical_or.html) instead |
+
