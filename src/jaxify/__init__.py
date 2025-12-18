@@ -67,17 +67,52 @@ class _Transformer(ast.NodeTransformer):
 
     def visit_BoolOp(self, node: ast.BoolOp) -> ast.AST:
         self.generic_visit(node)
-        match node:
-            case ast.BoolOp(op=ast.And()):
+        match node.op:
+            case ast.And():
                 return ast.Call(
                     func=ast.Name(id="__jaxify_and_hook__", ctx=ast.Load()),
-                    args=node.values,
+                    args=[
+                        ast.Lambda(
+                            args=ast.arguments(
+                                posonlyargs=[],
+                                args=[],
+                                kwonlyargs=[],
+                                kw_defaults=[],
+                                defaults=[],
+                            ),
+                            body=value,
+                        )
+                        for value in node.values
+                    ],
                     keywords=[],
                 )
-            case ast.BoolOp(op=ast.Or()):
+            case ast.Or():
                 return ast.Call(
                     func=ast.Name(id="__jaxify_or_hook__", ctx=ast.Load()),
-                    args=node.values,
+                    args=[
+                        ast.Lambda(
+                            args=ast.arguments(
+                                posonlyargs=[],
+                                args=[],
+                                kwonlyargs=[],
+                                kw_defaults=[],
+                                defaults=[],
+                            ),
+                            body=value,
+                        )
+                        for value in node.values
+                    ],
+                    keywords=[],
+                )
+        return node
+
+    def visit_UnaryOp(self, node: ast.UnaryOp) -> ast.AST:
+        self.generic_visit(node)
+        match node.op:
+            case ast.Not():
+                return ast.Call(
+                    func=ast.Name(id="__jaxify_not_hook__", ctx=ast.Load()),
+                    args=[node.operand],
                     keywords=[],
                 )
         return node
@@ -97,7 +132,19 @@ class _Transformer(ast.NodeTransformer):
                 left = comparator
             return ast.Call(
                 func=ast.Name(id="__jaxify_and_hook__", ctx=ast.Load()),
-                args=new_nodes,
+                args=[
+                    ast.Lambda(
+                        args=ast.arguments(
+                            posonlyargs=[],
+                            args=[],
+                            kwonlyargs=[],
+                            kw_defaults=[],
+                            defaults=[],
+                        ),
+                        body=new_node,
+                    )
+                    for new_node in new_nodes
+                ],
                 keywords=[],
             )
         return node
@@ -111,34 +158,48 @@ class _Transformer(ast.NodeTransformer):
         raise JaxifyError(msg)
 
 
-def _and_hook(*values: object) -> object:
+def _and_hook(*args: Callable[[], object]) -> object:
     ret: object = True
-    for value in values:
-        match ret, value:
-            case jax.core.Tracer(size=1), jax.core.Tracer(size=1):
-                ret = jnp.logical_and(ret, value)  # ty: ignore[invalid-argument-type]
-            case jax.core.Tracer(size=1), _:
-                ret = jnp.logical_and(ret, bool(value))
+    for arg in args:
+        match ret, (value := arg()):
+            case (jax.core.Tracer(size=1), _) | (
+                jax.core.Tracer(size=1),
+                jax.core.Tracer(size=1),
+            ):
+                ret = jax.lax.cond(ret, lambda _=value: _, lambda _=ret: _)
             case _, jax.core.Tracer(size=1):
-                ret = jnp.logical_and(bool(ret), value)  # ty: ignore[invalid-argument-type]
+                ret = value
             case _:
-                ret = ret and value
+                if not value:
+                    return value
+                ret = value
     return ret
 
 
-def _or_hook(*values: object) -> object:
+def _or_hook(*args: Callable[[], object]) -> object:
     ret: object = False
-    for value in values:
-        match ret, value:
-            case jax.core.Tracer(size=1), jax.core.Tracer(size=1):
-                ret = jnp.logical_or(ret, value)  # ty: ignore[invalid-argument-type]
-            case jax.core.Tracer(size=1), _:
-                ret = jnp.logical_or(ret, bool(value))
+    for arg in args:
+        match ret, (value := arg()):
+            case (jax.core.Tracer(size=1), _) | (
+                jax.core.Tracer(size=1),
+                jax.core.Tracer(size=1),
+            ):
+                ret = jax.lax.cond(ret, lambda _=ret: _, lambda _=value: _)
             case _, jax.core.Tracer(size=1):
-                ret = jnp.logical_or(bool(ret), value)  # ty: ignore[invalid-argument-type]
+                ret = value
             case _:
-                ret = ret or value
+                if value:
+                    return value
+                ret = value
     return ret
+
+
+def _not_hook(value: object) -> object:
+    match value:
+        case jax.core.Tracer(size=1):
+            return jnp.logical_not(value)
+        case _:
+            return not value
 
 
 def jaxify(func: Callable[_Inputs, _Output], /) -> Callable[_Inputs, _Output]:  # noqa: C901, PLR0915
@@ -181,6 +242,7 @@ def jaxify(func: Callable[_Inputs, _Output], /) -> Callable[_Inputs, _Output]:  
             "__jaxify_cond_hook__": lambda cond, cond_id: cond,  # noqa: ARG005
             "__jaxify_and_hook__": _and_hook,
             "__jaxify_or_hook__": _or_hook,
+            "__jaxify_not_hook__": _not_hook,
         },
         local_vars,
     )
