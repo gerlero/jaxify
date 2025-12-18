@@ -14,12 +14,12 @@ Write **Python**. Run **JAX**.
 [![PyPI - Python Version](https://img.shields.io/pypi/pyversions/jaxify)](https://pypi.org/project/jaxify/)
 
 | ⚠️ **jaxify** is an experimental project under development |
-|:---:|
-| Feel free to test out and report any issues. _Do not use in production_. |
+|:----------------------------------------------------------:|
+| You're welcome to try it out and report any issues!        |
 
 ---
 
-**jaxify** lets you apply [JAX](https://github.com/jax-ml/jax) transformations (like [`@jax.jit`](https://docs.jax.dev/en/latest/_autosummary/jax.jit.html) and/or [`@jax.vmap`](https://docs.jax.dev/en/latest/_autosummary/jax.vmap.html)) to functions with Python control flow that JAX normally cannot compile, like `if`/`elif`/`else` statements depending on input values.
+**jaxify** lets you apply [JAX](https://github.com/jax-ml/jax) transformations (like [`@jax.jit`](https://docs.jax.dev/en/latest/_autosummary/jax.jit.html) and/or [`@jax.vmap`](https://docs.jax.dev/en/latest/_autosummary/jax.vmap.html)) to functions with common Python constructs that JAX cannot itself handle, such as `if` conditions that depend on input values.
 </div>
 
 ## Installation
@@ -37,9 +37,9 @@ from jaxify import jaxify
 
 @jax.jit
 @jax.vmap
-@jaxify  # <-- Just add a @jaxify decorator
+@jaxify  # <-- Just decorate your function with @jaxify
 def absolute_value(x):
-    if x >= 0:  # <-- If conditional in a JIT-compiled function!
+    if x >= 0:  # <-- If block in a JIT-compiled function
         return x
     else:
         return -x
@@ -51,18 +51,42 @@ print(ys)
 
 ## How it works
 
-`@jaxify` is a decorator that transforms Python functions using a mixture of static analysis and dynamic tracing to replace unsupported control flow constructs with JAX-compatible alternatives. The transformed function is then traceable by JAX, enabling you to apply functional JAX transformations like `@jax.jit` and `@jax.vmap` seamlessly.
+The `@jaxify` decorator transforms Python functions using a mixture of static analysis and dynamic tracing to replace unsupported Python constructs with JAX-compatible alternatives. After the transformations, the functions become traceable by JAX, enabling you to apply functional JAX transformations like `@jax.jit` and `@jax.vmap` in a seamless manner.
 
 ## Compatibility status
 
-The following Python control flow constructs are currently supported within `@jaxify`-decorated functions:
+The following Python constructs are currently supported within `@jaxify`-decorated functions:
 
-| Python construct        | Support status   | Notes |
-|:-----------------------:|:----------------:|:----- |
-| `if` / `elif` / `else`  | ✅               | -     |
-| `and` / `or`            | ✅               | With non-singleton arrays, use [`&` or `jnp.logical_and`](https://docs.jax.dev/en/latest/_autosummary/jax.numpy.logical_and.html) / [`\|` or `jnp.logical_or`](https://docs.jax.dev/en/latest/_autosummary/jax.numpy.logical_or.html) |
-| comparisons             | ✅               | E.g. `x < y`, `x != y`, `x < y <= z` |
-| `for` loops             | ❌               | Use [`jax.lax.fori_loop`](https://docs.jax.dev/en/latest/_autosummary/jax.lax.fori_loop.html), [`jax.lax.scan`](https://docs.jax.dev/en/latest/_autosummary/jax.lax.scan.html), or [`jax.lax.while_loop`](https://docs.jax.dev/en/latest/_autosummary/jax.lax.while_loop.html) instead |
-| `while` loops           | ❌               | Use [`jax.lax.while_loop`](https://docs.jax.dev/en/latest/_autosummary/jax.lax.while_loop.html) instead |
-| `match`-`case`          | ⚠️               | Static values only. For dynamic values, use an `if`-`elif`-`else` chain or [`jax.lax.switch`](https://docs.jax.dev/en/latest/_autosummary/jax.lax.switch.html) instead |
+### 🔀 Conditionals
 
+| Construct                               | Works? | Notes |
+|:---------------------------------------:|:------:|:------|
+| `if` statements                         | ✅     | Fully supported including `elif` and `else` clauses. All branches are traced and translated to calls to [`jax.lax.cond`](https://docs.jax.dev/en/latest/_autosummary/jax.lax.cond.html) |
+| `if` expressions (e.g. `a if b else c`) | ✅     | Traced and translated to [`jax.lax.cond`](https://docs.jax.dev/en/latest/_autosummary/jax.lax.cond.html) |
+
+### ⚖️ Comparisons
+
+| Construct                        | Works? | Notes |
+|:--------------------------------:|:------:|:------|
+| `==`, `!=`, `<`, `>`, `<=`, `>=` | ✅     | Chained comparisons (e.g. `x < y <= z`) are supported by translation to the equivalent chain of individual comparisons |
+
+### 1️⃣ Logical operators
+
+| Construct    | Works? | Notes |
+|:------------:|:------:|:------|
+| `and` / `or` | ✅     | Short-circuiting of traced values supported via translation to [`jax.lax.cond`](https://docs.jax.dev/en/latest/_autosummary/jax.lax.cond.html) calls |
+| `not`        | ✅     | Translates to [`jnp.logical_not`](https://jax.readthedocs.io/en/latest/_autosummary/jax.numpy.logical_not.html) for traced single values |
+
+### 🔄 Loops
+
+| Construct     | Works? | Notes |
+|:-------------:|:------:|:------|
+| `for` loops   | ❌     | Currently unsupported. Use [`jax.lax.fori_loop`](https://docs.jax.dev/en/latest/_autosummary/jax.lax.fori_loop.html), [`jax.lax.scan`](https://docs.jax.dev/en/latest/_autosummary/jax.lax.scan.html), or [`jax.lax.while_loop`](https://docs.jax.dev/en/latest/_autosummary/jax.lax.while_loop.html) instead |
+| `while` loops | ❌     | Currently unsupported. Use [`jax.lax.while_loop`](https://docs.jax.dev/en/latest/_autosummary/jax.lax.while_loop.html) instead |
+
+
+### 🎯 Pattern matching
+
+| Construct      | Works? | Notes |
+|:--------------:|:------:|:------|
+| `match`-`case` | ✅⚠️   | Static values only. For traced values, use an `if`-`elif`-`else` chain or [`jax.lax.switch`](https://docs.jax.dev/en/latest/_autosummary/jax.lax.switch.html) instead |
