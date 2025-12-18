@@ -39,6 +39,14 @@ class _Transformer(ast.NodeTransformer):
             self.generic_visit(node)
         return node
 
+    def visit_AsyncFunctionDef(
+        self, node: ast.AsyncFunctionDef
+    ) -> ast.AsyncFunctionDef:
+        return node
+
+    def visit_Lambda(self, node: ast.Lambda) -> ast.Lambda:
+        return node
+
     def visit_If(self, node: ast.If) -> ast.AST:
         self.generic_visit(node)
         node.test = ast.Call(
