@@ -3,27 +3,42 @@ import functools
 import inspect
 import itertools
 import textwrap
+import warnings
 from collections.abc import Callable
 from typing import ParamSpec, TypeVar
 
 import jax
-import jax.interpreters.batching
-import jax.interpreters.partial_eval
+import jax.core
 
 _Inputs = ParamSpec("_Inputs")
 _Output = TypeVar("_Output")
 
 
 def jaxify(func: Callable[_Inputs, _Output], /) -> Callable[_Inputs, _Output]:  # noqa: C901, PLR0915
-    source = textwrap.dedent(inspect.getsource(func))
-    tree = ast.parse(source)
+    if not inspect.isfunction(func):
+        msg = "jaxify can only be applied to functions"
+        raise TypeError(msg)
+    if inspect.isgeneratorfunction(func):
+        msg = "jaxify does not support generator functions"
+        raise TypeError(msg)
+    if inspect.iscoroutinefunction(func):
+        msg = "jaxify does not support coroutine functions"
+        raise TypeError(msg)
+
+    try:
+        source = inspect.getsource(func)
+    except OSError as e:
+        msg = "Could not retrieve source code for function"
+        raise RuntimeError(msg) from e
+
+    tree = ast.parse(textwrap.dedent(source))
 
     nconds = 0
     for node in ast.walk(tree):
         match node:
             case ast.If() | ast.IfExp():
                 node.test = ast.Call(
-                    func=ast.Name(id="_jaxify_cond", ctx=ast.Load()),
+                    func=ast.Name(id="__jaxify_cond_hook__", ctx=ast.Load()),
                     args=[node.test, ast.Constant(value=nconds)],
                     keywords=[],
                 )
@@ -43,12 +58,22 @@ def jaxify(func: Callable[_Inputs, _Output], /) -> Callable[_Inputs, _Output]:  
                             del node.decorator_list[: i + 1]
                             break
 
+            case ast.AsyncFunctionDef() | ast.AsyncFor() | ast.AsyncWith():
+                msg = "jaxify does not support async syntax"
+                raise NotImplementedError(msg)
+
     ast.fix_missing_locations(tree)
 
-    traceable = compile(tree, filename="<ast>", mode="exec")
+    local_vars = {}
+    exec(  # noqa: S102
+        compile(tree, filename="<ast>", mode="exec"),
+        func.__globals__,  # ty: ignore[unresolved-attribute]
+        local_vars,
+    )
+    traceable_func: Callable[_Inputs, _Output] = local_vars[func.__name__]
 
     @functools.wraps(func)
-    def jaxify_wrapper(*args: _Inputs.args, **kwargs: _Inputs.kwargs) -> _Output:  # noqa: C901, PLR0912
+    def jaxify_wrapper(*args: _Inputs.args, **kwargs: _Inputs.kwargs) -> _Output:  # noqa: C901
         if not nconds:
             return func(*args, **kwargs)
 
@@ -57,36 +82,28 @@ def jaxify(func: Callable[_Inputs, _Output], /) -> Callable[_Inputs, _Output]:  
         )
         cond_values: list[list[object | None]] = []
         outputs: list[_Output] = []
-        for combination in cond_combinations:
+        combination: tuple[bool, ...] | None = None
+
+        def cond_hook(cond: object, cond_id: int) -> bool:
+            if isinstance(cond, jax.core.Tracer):
+                values[cond_id] = cond
+                assert combination is not None
+                return combination[cond_id]
+            return bool(cond)
+
+        traceable_func_local = type(traceable_func)(
+            traceable_func.__code__,
+            {**func.__globals__, "__jaxify_cond_hook__": cond_hook},
+            traceable_func.__name__,
+            traceable_func.__defaults__,
+            traceable_func.__closure__,
+        )
+
+        for combination in cond_combinations:  # noqa: B007
             values = [None] * nconds
-
-            def _jaxify_cond(cond: object, cond_id: int) -> bool:
-                if isinstance(
-                    cond,
-                    (
-                        jax.interpreters.partial_eval.DynamicJaxprTracer,
-                        jax.interpreters.batching.BatchTracer,
-                    ),
-                ):
-                    values[cond_id] = cond  # noqa: B023
-                    return combination[cond_id]  # noqa: B023
-                return bool(cond)
-
-            local_vars: dict[str, object] = {}
-            exec(  # noqa: S102
-                traceable,
-                {**func.__globals__, "jax": jax, "_jaxify_cond": _jaxify_cond},  # ty: ignore[unresolved-attribute]
-                local_vars,
-            )
-            traceable_func = local_vars[next(iter(local_vars))]
-
-            try:
-                result = traceable_func(*args, **kwargs)  # ty: ignore[call-non-callable]
-            except Exception:  # noqa: BLE001
-                result = None
-
+            result = traceable_func_local(*args, **kwargs)
             cond_values.append(values)
-            outputs.append(result)  # ty: ignore[invalid-argument-type]
+            outputs.append(result)
 
         ret = outputs[0]
         for i in range(1, len(outputs)):
@@ -118,8 +135,9 @@ def jaxify(func: Callable[_Inputs, _Output], /) -> Callable[_Inputs, _Output]:  
                         )
 
         if ret is None:
-            msg = "All possible paths through the function failed or returned None."
-            raise RuntimeError(msg)
+            warnings.warn(
+                "jaxify: all branches returned None", RuntimeWarning, stacklevel=2
+            )
 
         return ret  # ty: ignore[invalid-return-type]
 
