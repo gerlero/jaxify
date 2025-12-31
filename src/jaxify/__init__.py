@@ -1,15 +1,11 @@
 import ast
-import functools
+import importlib
 import inspect
-import itertools
 import textwrap
-import warnings
 from collections.abc import Callable
 from typing import ParamSpec, TypeVar
 
-import jax
-import jax.core
-import jax.numpy as jnp
+from jaxify._variables import get_locals
 
 _Inputs = ParamSpec("_Inputs")
 _Output = TypeVar("_Output")
@@ -22,10 +18,10 @@ class JaxifyError(Exception):
 class _Transformer(ast.NodeTransformer):
     def __init__(self) -> None:
         super().__init__()
-        self.nconds = 0
+        self._if_count = 0
         self.__top_level_function = True
 
-    def visit_FunctionDef(self, node: ast.FunctionDef) -> ast.AST:
+    def visit_FunctionDef(self, node: ast.FunctionDef) -> ast.FunctionDef:
         if self.__top_level_function:
             for i, decorator in enumerate(node.decorator_list):
                 match decorator:
@@ -37,6 +33,30 @@ class _Transformer(ast.NodeTransformer):
                         break
             self.__top_level_function = False
             self.generic_visit(node)
+            node.body.insert(
+                0,
+                ast.Assign(
+                    targets=[ast.Name(id="__jaxify_return", ctx=ast.Store())],
+                    value=ast.Call(
+                        func=ast.Attribute(
+                            value=ast.Name(id="__jaxify_hooks", ctx=ast.Load()),
+                            attr="Return",
+                            ctx=ast.Load(),
+                        ),
+                        args=[],
+                        keywords=[],
+                    ),
+                ),
+            )
+            node.body.append(
+                ast.Return(
+                    value=ast.Attribute(
+                        ast.Name(id="__jaxify_return", ctx=ast.Load()),
+                        attr="value",
+                        ctx=ast.Load(),
+                    )
+                )
+            )
         return node
 
     def visit_AsyncFunctionDef(
@@ -47,38 +67,222 @@ class _Transformer(ast.NodeTransformer):
     def visit_Lambda(self, node: ast.Lambda) -> ast.Lambda:
         return node
 
-    def visit_If(self, node: ast.If) -> ast.AST:
+    def visit_If(self, node: ast.If) -> list[ast.stmt]:
         self.generic_visit(node)
-        node.test = ast.Call(
-            func=ast.Name(id="__jaxify_cond_hook__", ctx=ast.Load()),
-            args=[
-                node.test,
-                ast.Constant(value=self.nconds),
-            ],
-            keywords=[],
+
+        read_vars_body, written_vars_body = get_locals(node.body)
+        read_vars_orelse, written_vars_orelse = get_locals(node.orelse)
+
+        read_vars = read_vars_body | read_vars_orelse
+        written_vars = written_vars_body | written_vars_orelse
+
+        if (
+            "__jaxify_return" in written_vars_body
+            and "__jaxify_return" not in written_vars_orelse
+        ):
+            read_vars.add("__jaxify_return")
+            type_stable_return_assignments_body = []
+            type_stable_return_assignments_orelse = [
+                ast.Assign(
+                    targets=[ast.Name("__jaxify_return", ast.Store())],
+                    value=ast.Call(
+                        ast.Attribute(
+                            ast.Name(id="__jaxify_return", ctx=ast.Load()),
+                            attr="set_type",
+                            ctx=ast.Load(),
+                        ),
+                        args=[
+                            ast.Attribute(
+                                value=ast.Subscript(
+                                    ast.Call(
+                                        ast.Name(
+                                            f"__jaxify_if_true_{self._if_count}",
+                                            ast.Load(),
+                                        ),
+                                        [
+                                            ast.Name(var, ast.Load())
+                                            for var in read_vars
+                                        ],
+                                        [],
+                                    ),
+                                    ast.Constant(
+                                        list(written_vars).index("__jaxify_return")
+                                    ),
+                                    ast.Load(),
+                                ),
+                                attr="value",
+                                ctx=ast.Load(),
+                            )
+                        ],
+                        posonlyargs=[],
+                        keywords=[],
+                    ),
+                )
+            ]
+        elif (
+            "__jaxify_return" in written_vars_orelse
+            and "__jaxify_return" not in written_vars_body
+        ):
+            read_vars.add("__jaxify_return")
+            type_stable_return_assignments_body = [
+                ast.Assign(
+                    targets=[ast.Name("__jaxify_return", ast.Store())],
+                    value=ast.Call(
+                        ast.Attribute(
+                            ast.Name(id="__jaxify_return", ctx=ast.Load()),
+                            attr="set_type",
+                            ctx=ast.Load(),
+                        ),
+                        args=[
+                            ast.Subscript(
+                                ast.Call(
+                                    ast.Name(
+                                        f"__jaxify_if_false_{self._if_count}",
+                                        ast.Load(),
+                                    ),
+                                    [ast.Name(var, ast.Load()) for var in read_vars],
+                                    [],
+                                ),
+                                ast.Constant(
+                                    list(written_vars).index("__jaxify_return")
+                                ),
+                                ast.Load(),
+                            )
+                        ],
+                        posonlyargs=[],
+                        keywords=[],
+                    ),
+                )
+            ]
+            type_stable_return_assignments_orelse = []
+        else:
+            type_stable_return_assignments_body = []
+            type_stable_return_assignments_orelse = []
+
+        args = ast.arguments(
+            posonlyargs=[],
+            args=[ast.arg(arg=var) for var in read_vars],
+            kwonlyargs=[],
+            kw_defaults=[],
+            defaults=[],
         )
-        self.nconds += 1
-        return node
+
+        if_true = ast.FunctionDef(
+            name=f"__jaxify_if_true_{self._if_count}",
+            args=args,
+            body=[
+                *node.body,
+                *type_stable_return_assignments_body,
+                ast.Return(
+                    value=ast.Tuple(
+                        elts=[ast.Name(var, ast.Load()) for var in written_vars],
+                        ctx=ast.Load(),
+                    )
+                ),
+            ],
+            decorator_list=[],
+        )
+
+        if_false = ast.FunctionDef(
+            name=f"__jaxify_if_false_{self._if_count}",
+            args=args,
+            body=[
+                *node.orelse,
+                *type_stable_return_assignments_orelse,
+                ast.Return(
+                    value=ast.Tuple(
+                        elts=[ast.Name(var, ast.Load()) for var in written_vars],
+                        ctx=ast.Load(),
+                    )
+                ),
+            ],
+            decorator_list=[],
+        )
+
+        new_if = ast.Assign(
+            targets=[
+                ast.Tuple(
+                    elts=[ast.Name(var, ast.Store()) for var in written_vars],
+                    ctx=ast.Store(),
+                )
+            ],
+            value=ast.Call(
+                func=ast.Attribute(
+                    value=ast.Name(id="__jaxify_hooks", ctx=ast.Load()),
+                    attr="if_hook",
+                    ctx=ast.Load(),
+                ),
+                args=[
+                    node.test,
+                    ast.Name(f"__jaxify_if_true_{self._if_count}", ast.Load()),
+                    ast.Name(f"__jaxify_if_false_{self._if_count}", ast.Load()),
+                    *[ast.Name(var, ast.Load()) for var in read_vars],
+                ],
+                keywords=[],
+            ),
+        )
+        self._if_count += 1
+        return [if_true, if_false, new_if]
+
+    def visit_Return(self, node: ast.Return) -> ast.Assign:
+        self.generic_visit(node)
+        return ast.Assign(
+            targets=[ast.Name(id="__jaxify_return", ctx=ast.Store())],
+            value=ast.Call(
+                ast.Attribute(
+                    ast.Name(id="__jaxify_return", ctx=ast.Load()),
+                    attr="return_",
+                    ctx=ast.Load(),
+                ),
+                args=[node.value] if node.value else [],
+                keywords=[],
+            ),
+        )
 
     def visit_IfExp(self, node: ast.IfExp) -> ast.AST:
         self.generic_visit(node)
-        node.test = ast.Call(
-            func=ast.Name(id="__jaxify_cond_hook__", ctx=ast.Load()),
+        return ast.Call(
+            func=ast.Attribute(
+                value=ast.Name(id="__jaxify_hooks", ctx=ast.Load()),
+                attr="if_hook",
+                ctx=ast.Load(),
+            ),
             args=[
                 node.test,
-                ast.Constant(value=self.nconds),
+                ast.Lambda(
+                    args=ast.arguments(
+                        posonlyargs=[],
+                        args=[],
+                        kwonlyargs=[],
+                        kw_defaults=[],
+                        defaults=[],
+                    ),
+                    body=node.body,
+                ),
+                ast.Lambda(
+                    args=ast.arguments(
+                        posonlyargs=[],
+                        args=[],
+                        kwonlyargs=[],
+                        kw_defaults=[],
+                        defaults=[],
+                    ),
+                    body=node.orelse,
+                ),
             ],
             keywords=[],
         )
-        self.nconds += 1
-        return node
 
     def visit_BoolOp(self, node: ast.BoolOp) -> ast.AST:
         self.generic_visit(node)
         match node.op:
             case ast.And():
                 return ast.Call(
-                    func=ast.Name(id="__jaxify_and_hook__", ctx=ast.Load()),
+                    func=ast.Attribute(
+                        value=ast.Name(id="__jaxify_hooks", ctx=ast.Load()),
+                        attr="and_hook",
+                        ctx=ast.Load(),
+                    ),
                     args=[
                         ast.Lambda(
                             args=ast.arguments(
@@ -96,7 +300,11 @@ class _Transformer(ast.NodeTransformer):
                 )
             case ast.Or():
                 return ast.Call(
-                    func=ast.Name(id="__jaxify_or_hook__", ctx=ast.Load()),
+                    func=ast.Attribute(
+                        value=ast.Name(id="__jaxify_hooks", ctx=ast.Load()),
+                        attr="or_hook",
+                        ctx=ast.Load(),
+                    ),
                     args=[
                         ast.Lambda(
                             args=ast.arguments(
@@ -119,7 +327,11 @@ class _Transformer(ast.NodeTransformer):
         match node.op:
             case ast.Not():
                 return ast.Call(
-                    func=ast.Name(id="__jaxify_not_hook__", ctx=ast.Load()),
+                    func=ast.Attribute(
+                        value=ast.Name(id="__jaxify_hooks", ctx=ast.Load()),
+                        attr="not_hook",
+                        ctx=ast.Load(),
+                    ),
                     args=[node.operand],
                     keywords=[],
                 )
@@ -139,7 +351,11 @@ class _Transformer(ast.NodeTransformer):
                 new_nodes.append(new_compare)
                 left = comparator
             return ast.Call(
-                func=ast.Name(id="__jaxify_and_hook__", ctx=ast.Load()),
+                func=ast.Attribute(
+                    value=ast.Name(id="__jaxify_hooks", ctx=ast.Load()),
+                    attr="and_hook",
+                    ctx=ast.Load(),
+                ),
                 args=[
                     ast.Lambda(
                         args=ast.arguments(
@@ -166,51 +382,7 @@ class _Transformer(ast.NodeTransformer):
         raise JaxifyError(msg)
 
 
-def _and_hook(*args: Callable[[], object]) -> object:
-    ret: object = True
-    for arg in args:
-        match ret, (value := arg()):
-            case (jax.core.Tracer(size=1), _) | (
-                jax.core.Tracer(size=1),
-                jax.core.Tracer(size=1),
-            ):
-                ret = jax.lax.cond(ret, lambda _=value: _, lambda _=ret: _)
-            case _, jax.core.Tracer(size=1):
-                ret = value
-            case _:
-                if not value:
-                    return value
-                ret = value
-    return ret
-
-
-def _or_hook(*args: Callable[[], object]) -> object:
-    ret: object = False
-    for arg in args:
-        match ret, (value := arg()):
-            case (jax.core.Tracer(size=1), _) | (
-                jax.core.Tracer(size=1),
-                jax.core.Tracer(size=1),
-            ):
-                ret = jax.lax.cond(ret, lambda _=ret: _, lambda _=value: _)
-            case _, jax.core.Tracer(size=1):
-                ret = value
-            case _:
-                if value:
-                    return value
-                ret = value
-    return ret
-
-
-def _not_hook(value: object) -> object:
-    match value:
-        case jax.core.Tracer(size=1):
-            return jnp.logical_not(value)
-        case _:
-            return not value
-
-
-def jaxify(func: Callable[_Inputs, _Output], /) -> Callable[_Inputs, _Output]:  # noqa: C901, PLR0915
+def jaxify(func: Callable[_Inputs, _Output], /) -> Callable[_Inputs, _Output]:
     if not inspect.isfunction(func):
         msg = "jaxify can only be applied to functions"
         raise TypeError(msg)
@@ -238,7 +410,6 @@ def jaxify(func: Callable[_Inputs, _Output], /) -> Callable[_Inputs, _Output]:  
 
     transformer = _Transformer()
     tree = transformer.visit(tree)
-    nconds = transformer.nconds
 
     ast.fix_missing_locations(tree)
 
@@ -247,80 +418,10 @@ def jaxify(func: Callable[_Inputs, _Output], /) -> Callable[_Inputs, _Output]:  
         compile(tree, filename="<ast>", mode="exec"),
         {
             **func.__globals__,
-            "__jaxify_cond_hook__": lambda cond, cond_id: cond,  # noqa: ARG005
-            "__jaxify_and_hook__": _and_hook,
-            "__jaxify_or_hook__": _or_hook,
-            "__jaxify_not_hook__": _not_hook,
+            "__jaxify_hooks": importlib.import_module("jaxify._hooks"),
         },
         local_vars,
     )
     traceable_func: Callable[_Inputs, _Output] = local_vars[func.__name__]
 
-    @functools.wraps(func)
-    def jaxify_wrapper(*args: _Inputs.args, **kwargs: _Inputs.kwargs) -> _Output:  # noqa: C901
-        if nconds == 0:
-            return traceable_func(*args, **kwargs)
-
-        cond_combinations: list[tuple[bool, ...]] = list(
-            itertools.product([False, True], repeat=nconds)
-        )
-        cond_values: list[list[object | None]] = []
-        outputs: list[_Output] = []
-        combination: tuple[bool, ...] | None = None
-
-        def cond_hook(cond: object, cond_id: int) -> object:
-            match cond:
-                case jax.core.Tracer():
-                    values[cond_id] = cond
-                    assert combination is not None
-                    return combination[cond_id]
-                case _:
-                    return cond
-
-        traceable_func_local = type(traceable_func)(
-            traceable_func.__code__,
-            {
-                **traceable_func.__globals__,
-                "__jaxify_cond_hook__": cond_hook,
-            },
-            traceable_func.__name__,
-            traceable_func.__defaults__,
-            traceable_func.__closure__,
-        )
-
-        for combination in cond_combinations:  # noqa: B007
-            values = [None] * nconds
-            result = traceable_func_local(*args, **kwargs)
-            cond_values.append(values)
-            outputs.append(result)
-
-        ret = outputs[0]
-        for i in range(1, len(outputs)):
-            if outputs[i] is not None:
-                mask = True
-                for cond, value in zip(
-                    cond_values[i], cond_combinations[i], strict=True
-                ):
-                    if cond is not None:
-                        match value:
-                            case True:
-                                mask = jnp.logical_and(mask, cond)
-                            case False:
-                                mask = jnp.logical_and(mask, jnp.logical_not(cond))
-                if ret is None:
-                    ret = outputs[i]
-                else:
-                    ret = jax.lax.cond(
-                        mask,
-                        lambda _=outputs[i]: _,
-                        lambda _=ret: _,
-                    )
-
-        if ret is None:
-            warnings.warn(
-                "jaxify: all branches returned None", RuntimeWarning, stacklevel=2
-            )
-
-        return ret  # ty: ignore[invalid-return-type]
-
-    return jaxify_wrapper
+    return traceable_func
