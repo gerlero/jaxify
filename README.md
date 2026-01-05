@@ -51,7 +51,7 @@ print(ys)
 
 ## How it works
 
-The `@jaxify` decorator transforms Python functions using a mixture of static analysis and dynamic tracing to replace unsupported Python constructs with JAX-compatible alternatives. After the transformations, the functions become traceable by JAX, enabling you to apply functional JAX transformations like `@jax.jit` and `@jax.vmap` in a seamless manner.
+The `@jaxify` decorator transforms Python functions using static analysis to replace unsupported Python constructs with JAX-compatible alternatives. After the transformations, the functions become traceable by JAX, enabling you to apply functional JAX transformations like `@jax.jit` and `@jax.vmap` in a seamless manner.
 
 ## Compatibility status
 
