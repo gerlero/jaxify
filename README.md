@@ -61,8 +61,8 @@ The following Python constructs are currently supported within `@jaxify`-decorat
 
 | Construct                               | Works? | Notes |
 |:---------------------------------------:|:------:|:------|
-| `if` statements                         | ✅     | Fully supported including `elif` and `else` clauses. All branches are traced and translated to calls to [`jax.lax.cond`](https://docs.jax.dev/en/latest/_autosummary/jax.lax.cond.html) |
-| `if` expressions (e.g. `a if b else c`) | ✅     | Traced and translated to [`jax.lax.cond`](https://docs.jax.dev/en/latest/_autosummary/jax.lax.cond.html) |
+| `if` statements                         | ✅     | Fully supported including `elif` and `else` clauses. Translated to calls to [`jax.lax.cond`](https://docs.jax.dev/en/latest/_autosummary/jax.lax.cond.html) |
+| `if` expressions (e.g. `a if b else c`) | ✅     | Translated to [`jax.lax.cond`](https://docs.jax.dev/en/latest/_autosummary/jax.lax.cond.html) |
 
 ### ⚖️ Comparisons
 
