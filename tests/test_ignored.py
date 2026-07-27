@@ -1,6 +1,7 @@
 from collections.abc import Generator
 
 import jax
+
 from jaxify import jaxify
 
 
@@ -21,6 +22,6 @@ def test_nested_funcs() -> None:
         async def async_helper(a: int) -> int:
             return a + 1
 
-        lambda_helper = lambda v: v * 2  # noqa: E731, F841
+        lambda_helper = lambda v: v * 2  # noqa: F841
 
     assert with_nested_funcs(5) is None

@@ -8,16 +8,16 @@ class _LocalVarVisitor(ast.NodeVisitor):
         self.written = set()
         self.read = set()
 
-    def visit_FunctionDef(self, node: ast.FunctionDef) -> None:  # noqa: ARG002
+    def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
         return
 
-    def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:  # noqa: ARG002
+    def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
         return
 
-    def visit_Lambda(self, node: ast.Lambda) -> None:  # noqa: ARG002
+    def visit_Lambda(self, node: ast.Lambda) -> None:
         return
 
-    def visit_Attribute(self, node: ast.Attribute) -> None:  # noqa: ARG002
+    def visit_Attribute(self, node: ast.Attribute) -> None:
         return
 
     def visit_Name(self, node: ast.Name) -> None:

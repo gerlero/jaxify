@@ -1,6 +1,7 @@
 from collections.abc import AsyncGenerator, Generator
 
 import pytest
+
 from jaxify import JaxifyError, jaxify
 
 

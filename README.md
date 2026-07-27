@@ -35,6 +35,7 @@ import jax
 import jax.numpy as jnp
 from jaxify import jaxify
 
+
 @jax.jit
 @jax.vmap
 @jaxify  # <-- Just decorate your function with @jaxify
@@ -43,6 +44,7 @@ def absolute_value(x):
         return x
     else:
         return -x
+
 
 xs = jnp.arange(-1000, 1000)
 ys = absolute_value(xs)  # <-- Runs at JAX speed!
