@@ -373,11 +373,11 @@ class _Transformer(ast.NodeTransformer):
             )
         return node
 
-    def visit_For(self, node: ast.For) -> ast.AST:  # noqa: ARG002
+    def visit_For(self, node: ast.For) -> ast.AST:
         msg = "jaxify does not currently support loops"
         raise JaxifyError(msg)
 
-    def visit_While(self, node: ast.While) -> ast.AST:  # noqa: ARG002
+    def visit_While(self, node: ast.While) -> ast.AST:
         msg = "jaxify does not currently support loops"
         raise JaxifyError(msg)
 

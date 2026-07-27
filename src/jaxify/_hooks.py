@@ -78,7 +78,7 @@ class _NoReturnValue:
         return ((), None)
 
     @classmethod
-    def tree_unflatten(cls, aux_data: None, children: tuple[()]) -> "_NoReturnValue":  # noqa: ARG003
+    def tree_unflatten(cls, aux_data: None, children: tuple[()]) -> "_NoReturnValue":
         return _NoReturnValue()
 
 
@@ -124,7 +124,7 @@ class Return:
     @classmethod
     def tree_unflatten(
         cls,
-        aux_data: None,  # noqa: ARG003
+        aux_data: None,
         children: tuple[object, object],
     ) -> "Return":
         done, value = children

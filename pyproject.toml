@@ -43,11 +43,3 @@ dev = [
     {include-group = "typing"},
     {include-group = "test"},
 ]
-
-[tool.ruff.lint]
-extend-select = ["ALL"]
-extend-ignore = [
-    "COM812",
-    "D",
-    "S101",
-]
