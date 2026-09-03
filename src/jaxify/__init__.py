@@ -114,7 +114,6 @@ class _Transformer(ast.NodeTransformer):
                                 ctx=ast.Load(),
                             )
                         ],
-                        posonlyargs=[],
                         keywords=[],
                     ),
                 )
@@ -149,7 +148,6 @@ class _Transformer(ast.NodeTransformer):
                                 ast.Load(),
                             )
                         ],
-                        posonlyargs=[],
                         keywords=[],
                     ),
                 )
