@@ -175,6 +175,7 @@ class _Transformer(ast.NodeTransformer):
                 ),
             ],
             decorator_list=[],
+            type_params=[],
         )
 
         if_false = ast.FunctionDef(
@@ -191,6 +192,7 @@ class _Transformer(ast.NodeTransformer):
                 ),
             ],
             decorator_list=[],
+            type_params=[],
         )
 
         new_if = ast.Assign(
