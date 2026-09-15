@@ -3,12 +3,8 @@ import importlib
 import inspect
 import textwrap
 from collections.abc import Callable
-from typing import ParamSpec, TypeVar
 
 from jaxify._variables import get_locals
-
-_Inputs = ParamSpec("_Inputs")
-_Output = TypeVar("_Output")
 
 
 class JaxifyError(Exception):
@@ -179,6 +175,7 @@ class _Transformer(ast.NodeTransformer):
                 ),
             ],
             decorator_list=[],
+            type_params=[],
         )
 
         if_false = ast.FunctionDef(
@@ -195,6 +192,7 @@ class _Transformer(ast.NodeTransformer):
                 ),
             ],
             decorator_list=[],
+            type_params=[],
         )
 
         new_if = ast.Assign(
@@ -380,7 +378,9 @@ class _Transformer(ast.NodeTransformer):
         raise JaxifyError(msg)
 
 
-def jaxify(func: Callable[_Inputs, _Output], /) -> Callable[_Inputs, _Output]:
+def jaxify[**Inputs, Output](
+    func: Callable[Inputs, Output], /
+) -> Callable[Inputs, Output]:
     if not inspect.isfunction(func):
         msg = "jaxify can only be applied to functions"
         raise TypeError(msg)
@@ -420,6 +420,6 @@ def jaxify(func: Callable[_Inputs, _Output], /) -> Callable[_Inputs, _Output]:
         },
         local_vars,
     )
-    traceable_func: Callable[_Inputs, _Output] = local_vars[func.__name__]
+    traceable_func: Callable[Inputs, Output] = local_vars[func.__name__]
 
     return traceable_func
