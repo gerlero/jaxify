@@ -1,26 +1,16 @@
-import sys
 from collections.abc import Callable
-from typing import TypeVar
-
-if sys.version_info >= (3, 11):
-    from typing import TypeVarTuple, Unpack
-else:
-    from typing_extensions import TypeVarTuple, Unpack
 
 import jax
 import jax.core
 import jax.numpy as jnp
 
-_Args = TypeVarTuple("_Args")
-_R = TypeVar("_R")
 
-
-def if_hook(
+def if_hook[*Args, R](
     cond: object,
-    if_true: Callable[[*_Args], _R],
-    if_false: Callable[[*_Args], _R],
-    *args: Unpack[_Args],
-) -> _R:
+    if_true: Callable[[*Args], R],
+    if_false: Callable[[*Args], R],
+    *args: *Args,
+) -> R:
     match cond:
         case jax.core.Tracer(size=1):
             return jax.lax.cond(cond, if_true, if_false, *args)
