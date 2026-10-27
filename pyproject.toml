@@ -20,7 +20,7 @@ classifiers = [
     "Typing :: Typed",
     "Operating System :: OS Independent",
 ]
-dependencies = ["jax>=0.5,<0.12"]
+dependencies = ["jax>=0.5,<0.13"]
 
 [project.urls]
 Homepage = "https://github.com/gerlero/jaxify"
